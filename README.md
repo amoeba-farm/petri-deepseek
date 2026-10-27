@@ -16,7 +16,7 @@ seats (no separate page):
 
 | Where | What | Harness seat |
 |---|---|---|
-| In the transcript, as the agent works | A card for research and bot calls: a pairing code with Approve, assignments, a bot with its P&L and Start/Stop, published bots and the leaderboard with Install. Market reads and trades show one row (what ran) and no card. | `tool.call.toolview` |
+| In the transcript, as the agent works | A card for research and bot calls: "DeepSeek wants to research for you" with Approve and Reject, assignments, a bot with its P&L and Start/Stop, published bots and the leaderboard with Install. Market reads and trades show one row (what ran) and no card. | `tool.call.toolview` |
 | Under the agent's final answer | The turn's research and bot results kept visible after Harness folds the work steps | `conversation.chat.turnTail` |
 | Above the composer | A Petri strip in chats that used research or bots: an Approve chip when an agent is waiting to connect, how many bots run, open and hide | `conversation.input.dock` |
 | Beside the chat | **Petri**, a visual aid: Research (an agent waiting to connect, the agent and what it works on — Researching while Petri sees it checking in, otherwise when it was last seen — its activity and the sources it sent) and Oracle (collateral, rewards to claim, research finds, rewards by month, your proofs). Each says what matters in a line per item, with the site's status words; anything the agent can do is a chip that puts the request in the composer. **Bots**: Mine, Discover and Leaderboard. | `sidebarRightTabs`, `sidebar.right.pane.tab` |
@@ -74,13 +74,13 @@ Harness 0.2 (0.2.1-rc.3 or later). In Harness, open **Plugins**, click
 install it:
 
 ```text
-https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.0/amoeba-dsh-petri-0.5.0.tgz
+https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.1/amoeba-dsh-petri-0.5.1.tgz
 ```
 
 From a terminal instead (`web` for the browser Harness):
 
 ```sh
-dsh plugin --profile desktop add https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.0/amoeba-dsh-petri-0.5.0.tgz
+dsh plugin --profile desktop add https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.1/amoeba-dsh-petri-0.5.1.tgz
 ```
 
 Reopen Harness if it asks you to. Its package manager may report missing

@@ -520,7 +520,9 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
     // The workspace lists a code as E17787AA; the agent shows it as E177-87AA.
     const plainCode = code => String(code || '').replace(/[^0-9a-z]/gi, '').toUpperCase();
     const sameCode = (a, b) => !!a && plainCode(a) === plainCode(b);
-    const showCode = code => { const c = plainCode(code); return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : code; };
+    // In DeepSeek the request and its Approve are in one app, so no code to
+    // match by eye: a request names who asks (the TUI shows codes).
+    const requester = p => p?.harness === 'DeepSeek Harness' ? 'DeepSeek' : `${p?.name || 'An agent'}${p?.harness ? ` (${p.harness})` : ''}`;
     function LoginBody({ data, petri }) {
       const [payout, setPayout] = useState('');
       const [approve, runApprove] = useAction(useCallback(async decision => {
@@ -539,8 +541,7 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       }
       return h('div', { className: 'ptr-stack' },
         h('div', { className: 'ptr-line ptr-between ptr-wrap' },
-          h('div', null, h('div', { className: 'ptr-cap' }, data.status === 'rejected' ? 'Rejected' : 'Pairing code'),
-            h('div', { className: 'ptr-mono', style: { fontSize: 20, letterSpacing: '.12em' } }, data.userCode || '—')),
+          h('span', null, data.status === 'rejected' ? 'Rejected' : 'DeepSeek wants to research for you'),
           petri && data.userCode && data.status !== 'rejected' && !approve.data ? h('div', { className: 'ptr-line' },
             h('button', { type: 'button', className: 'ptr-btn ptr-btn-solid', disabled: approve.busy, onClick: () => runApprove('approve') }, approve.busy ? h(Spin) : 'Approve'),
             h('button', { type: 'button', className: 'ptr-btn', disabled: approve.busy, onClick: () => runApprove('reject') }, 'Reject')) : null),
@@ -549,8 +550,7 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
           h('div', { className: 'ptr-line' },
             h('input', { className: 'ptr-input ptr-mono', placeholder: 'Wallet address', value: payout, onChange: e => setPayout(e.target.value), spellCheck: false }),
             h('button', { type: 'submit', className: 'ptr-btn ptr-btn-solid', disabled: approve.busy || !payout.trim() }, 'Save and approve'))) : null,
-        approve.data ? h('div', { className: 'ptr-line' }, h(DoneIcon), h('span', { className: 'ptr-note' }, 'Approved. Tell the agent to log in again to finish connecting.'))
-          : data.nextStep && !needsWallet ? h('div', { className: 'ptr-note' }, data.nextStep) : null,
+        approve.data ? h('div', { className: 'ptr-line' }, h(DoneIcon), h('span', { className: 'ptr-note' }, 'Approved. Tell the agent to continue.')) : null,
         needsWallet ? null : h(Alert, { error: approve.error || (typeof data.error === 'string' ? data.error : data.error?.message) }));
     }
     // Hundreds of assignments: pick a month and a kind, then one of what is left.
@@ -1146,8 +1146,8 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       useEffect(() => { if (/connect a wallet/i.test(state.error || '')) petri.open({ view: 'Research' }); }, [state.error, petri]);
       if (!pairings.length) return null;
       const p = pairings[0];
-      return h(Tip, { label: state.error || `${p.name || 'An agent'} wants to connect` }, h('button', { type: 'button', className: 'ptr-dock-chip', disabled: state.busy, onClick: () => act(p.id) },
-        state.busy ? h(Spin) : UI.StateDot ? h(UI.StateDot, { state: 'warning' }) : null, h('span', { className: 'ptr-mono' }, showCode(p.code)), 'Approve'));
+      return h(Tip, { label: state.error || `${requester(p)} wants to research for you` }, h('button', { type: 'button', className: 'ptr-dock-chip', disabled: state.busy, onClick: () => act(p.id) },
+        state.busy ? h(Spin) : UI.StateDot ? h(UI.StateDot, { state: 'warning' }) : null, 'Approve research'));
     }
     function PetriDock({ petri }) {
       const session = useSession(petri?.sessionId);
@@ -1329,9 +1329,8 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       return h(Fragment, null,
         // Only a person approves an agent: a request shows first, while it waits.
         pairings.map(p => h('div', { key: p.id, className: 'ptr-request' },
-          h('div', { className: 'ptr-cap' }, `${p.name || 'An agent'}${p.harness ? ` (${p.harness})` : ''} wants to research for you`),
-          h('div', { className: 'ptr-line ptr-between', style: { marginTop: 6 } },
-            h('span', { className: 'ptr-mono', style: { fontSize: 18, letterSpacing: '.12em' } }, showCode(p.code)),
+          h('div', { className: 'ptr-line ptr-between ptr-wrap' },
+            h('span', null, `${requester(p)} wants to research for you`),
             h('div', { className: 'ptr-line' },
               payout ? h('button', { type: 'button', className: 'ptr-btn ptr-btn-solid', disabled: state.busy, onClick: () => act('approve', { pairingId: p.id }) }, 'Approve') : null,
               h('button', { type: 'button', className: 'ptr-btn', disabled: state.busy, onClick: () => act('reject', { pairingId: p.id }) }, 'Reject'))),
