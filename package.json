@@ -1,0 +1,59 @@
+{
+  "name": "@amoeba/dsh-petri",
+  "version": "0.5.0",
+  "description": "Petri oracle research, evidence, rewards and trading bots inside DeepSeek Harness, with market and trade actions as agent tools.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amoeba-farm/petri-deepseek.git"
+  },
+  "homepage": "https://github.com/amoeba-farm/petri-deepseek#readme",
+  "exports": {
+    ".": "./index.js",
+    "./tools": "./tools.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "tools.js",
+    "client.js",
+    "lib/",
+    "locale/",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=24",
+    "dsh": ">=0.2.1-rc.3 <0.3.0-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.3 <0.3.0-0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.3",
+    "@deepseek-ai/schemastery": "3.18.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

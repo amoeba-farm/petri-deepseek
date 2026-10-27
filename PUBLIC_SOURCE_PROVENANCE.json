@@ -1,0 +1,6 @@
+{
+  "source": "plugins/petri in Amoeba's private monorepo",
+  "commit": "a4f54e59ef90ec5348a18fb5c12826c4bb3ad816",
+  "version": "0.5.0",
+  "excluded": ["DESIGN.md (the private design log)"]
+}

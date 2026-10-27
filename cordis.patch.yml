@@ -1,0 +1,5 @@
+- insert:
+    - id: petri
+      name: '@amoeba/dsh-petri'
+    - id: petri-tools
+      name: '@amoeba/dsh-petri/tools'

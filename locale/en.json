@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Petri",
+    "description": "Amoeba oracle research and trading bots inside your DeepSeek chats.",
+    "detail": "Oracle research and trading bots in the chat. Research steps and bots appear as cards; a Petri tab beside the chat holds research and the oracle, and a Bots tab holds your bots, bots other people published and the leaderboard. Bots are made by asking for them in the chat, and each trades from a wallet of its own. The agent also gets Petri’s market reads and trade actions as tools, with nothing drawn for them. Uses your local Petri executable and workspace."
+  }
+}
