@@ -1,6 +1,7 @@
 import { RESEARCH } from './lib/research.mjs';
 import { MARKET } from './lib/market.mjs';
 import { BOT_TOOLS } from './lib/bots.mjs';
+import { ORACLE } from './lib/oracle.mjs';
 
 export const inject = ['petri', 'tools'];
 // The model reads the JSON; the chat's Petri cards parse the same text.
@@ -13,6 +14,15 @@ export function apply(ctx) {
       parameters: definition.schema, output,
       execute(input, exec) {
         return ctx.petri.invoke({ action: 'market', tool: definition.name, input: input || {} }, exec.signal);
+      },
+    });
+  }
+  for (const definition of ORACLE) {
+    ctx.tools.register({
+      name: definition.name, description: definition.description,
+      parameters: definition.schema, output,
+      execute(input, exec) {
+        return ctx.petri.invoke({ action: 'oracle', tool: definition.name, input: input || {} }, exec.signal);
       },
     });
   }

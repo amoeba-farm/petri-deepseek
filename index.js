@@ -4,6 +4,7 @@ import { PetriProcess, effectiveConfig, executable } from './lib/process.mjs';
 import { Bots, validateBotInput } from './lib/bots.mjs';
 import { agentName, researchArgs, RESEARCH, validateInput } from './lib/research.mjs';
 import { MARKET, validateMarketInput } from './lib/market.mjs';
+import { ORACLE } from './lib/oracle.mjs';
 import { Workspace } from './lib/workspace.mjs';
 import { Updater } from './lib/update.mjs';
 import manifest from './package.json' with { type: 'json' };
@@ -75,6 +76,12 @@ export default class Petri extends TypertRemoteService {
     if (request.action === 'market') {
       const definition = MARKET.find(tool => tool.name === request.tool);
       if (!definition) throw new Error('Unknown Petri market tool.');
+      return (await this.process.run(definition.args(validateMarketInput(definition, request.input || {})), { signal })).data;
+    }
+    // The oracle's stages: reads, and writes that confirm in their argv (lib/oracle.mjs).
+    if (request.action === 'oracle') {
+      const definition = ORACLE.find(tool => tool.name === request.tool);
+      if (!definition) throw new Error('Unknown Petri oracle tool.');
       return (await this.process.run(definition.args(validateMarketInput(definition, request.input || {})), { signal })).data;
     }
     if (request.action === 'workspace') return this.workspace.invoke(request.operation, request.input, signal);

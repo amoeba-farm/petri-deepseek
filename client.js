@@ -19,7 +19,15 @@ window.__ModuleLoader__.load({
     // The registry's reads draw as lists of published bots; the rest as the user's own bot.
     const HUB_TOOLS = ['petri_bots_discover', 'petri_bot_show', 'petri_bots_leaderboard'];
     const BOT_TOOLS = ['petri_bots', 'petri_bot_read', 'petri_bot_write', 'petri_bot_new', 'petri_bot_set', 'petri_bot_start', 'petri_bot_stop', 'petri_bot_publish', 'petri_bot_remove', 'petri_bot_install', ...HUB_TOOLS];
-    const TOOL_NAMES = [...MARKET_TOOLS, 'petri_command', ...RESEARCH_TOOLS, ...BOT_TOOLS];
+    // The oracle's stages the agent takes part in (lib/oracle.mjs): drawn, and kept in the Petri tab.
+    // Its reads draw what is open and what is the user's; every write draws what it did.
+    const ORACLE_READS = ['petri_challenges', 'petri_prints', 'petri_updates', 'petri_stakes', 'petri_series_template', 'petri_series_check', 'petri_observe_template'];
+    const ORACLE_WRITES = ['petri_collateral', 'petri_propose_series', 'petri_support_source', 'petri_sponsor', 'petri_challenge_source', 'petri_observe',
+      'petri_print', 'petri_challenge_print', 'petri_challenge_update', 'petri_settle_all', 'petri_oracle_step', 'petri_claim_rewards'];
+    const ORACLE_TOOLS = [...ORACLE_READS, ...ORACLE_WRITES];
+    // Rows with nothing under them: a progress report, and blanks only the agent fills in.
+    const QUIET_TOOLS = ['petri_report_progress', 'petri_series_template', 'petri_observe_template'];
+    const TOOL_NAMES = [...MARKET_TOOLS, 'petri_command', ...RESEARCH_TOOLS, ...ORACLE_TOOLS, ...BOT_TOOLS];
 
     // ---------------------------------------------------------------- styles
     // Host tokens only (--dsw-*), so light, dark and font-size settings follow DeepSeek.
@@ -177,6 +185,11 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
 .ptr-t small{display:block;color:var(--ptr-fg3);font-size:11.5px;overflow:hidden;text-overflow:ellipsis}
 .ptr-s{color:var(--ptr-fg3);font-size:11.5px;white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
 .ptr-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ptr-a{color:var(--dsw-alias-link,var(--ptr-fg2));text-decoration:none}.ptr-a:hover{text-decoration:underline}
+.ptr-track{display:inline-flex;gap:2px;vertical-align:middle}
+.ptr-track i{width:9px;height:4px;border-radius:2px;background:var(--ptr-line2)}
+.ptr-track i[data-done]{background:var(--ptr-fg3)}
+.ptr-track i[data-on]{background:var(--ptr-fg)}
 .ptr-chip{height:26px;padding:0 11px;border-radius:999px;border:.5px solid var(--ptr-line2);background:none;font-size:12px;color:var(--ptr-fg2);cursor:pointer}
 .ptr-chip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--ptr-fg)}
 .ptr-request{margin:4px 0 2px;padding:12px;border:.5px solid var(--ptr-line2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1)}
@@ -984,15 +997,28 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       petri_rewards: 'Rewards', petri_session_open: 'Session', petri_session_close: 'Session',
       petri_bots: 'Bots', petri_bot_read: 'Bot', petri_bot_write: 'Bot', petri_bot_new: 'New bot', petri_bot_set: 'Bot', petri_bot_start: 'Bot started',
       petri_bot_stop: 'Bot stopped', petri_bot_publish: 'Bot published', petri_bot_remove: 'Bot removed', petri_bot_install: 'Bot installed',
+      petri_challenges: 'Challenges', petri_challenge_source: 'Challenge', petri_prints: 'Opening prints', petri_updates: 'Updates',
+      petri_series_template: 'Series template', petri_series_check: 'Series check', petri_observe_template: 'Observation template',
+      petri_collateral: 'Collateral', petri_propose_series: 'Source proposed', petri_support_source: 'Support', petri_sponsor: 'Sponsorship',
+      petri_observe: 'Observation', petri_print: 'Print', petri_challenge_print: 'Challenge', petri_challenge_update: 'Challenge',
+      petri_oracle_step: 'Oracle', petri_claim_rewards: 'Rewards claimed', petri_oracle_done: 'Oracle', petri_stakes: 'Bonds and stakes', petri_settle_all: 'Settled',
       petri_bots_discover: 'Bots to install', petri_bot_show: 'Bot', petri_bots_leaderboard: 'Bots leaderboard', petri_bot: 'Bot', petri_bot_hub: 'Bots',
     };
     // A petri_command result is shown like the structured read it ran.
     // ...and a market or trade command run through it draws nothing, like the trade tools.
     const TRADE_COMMANDS = ['markets', 'market', 'book', 'trades', 'chart', 'quote', 'long', 'short', 'close', 'cancel', 'positions', 'wallet', 'history', 'deposit', 'withdraw'];
+    // An oracle read run through petri_command draws as its tool does, told apart by what it holds.
+    const ORACLE_VIEWS = { challenges: ['petri_challenges', 'challenges'], prints: ['petri_prints', 'prints'], updates: ['petri_updates', 'updates'], stakes: ['petri_stakes', 'stakes'] };
     function viewName(entry) {
       if (HUB_TOOLS.includes(entry.name)) return 'petri_bot_hub';
       if (BOT_TOOLS.includes(entry.name)) return 'petri_bot';
+      // Every oracle write but a source challenge (its own card) draws what it did.
+      if (ORACLE_WRITES.includes(entry.name) && entry.name !== 'petri_challenge_source') return 'petri_oracle_done';
       if (entry.name !== 'petri_command') return entry.name;
+      const action = entry.data?.action, args = Array.isArray(entry.args?.args) ? entry.args.args : [];
+      if (typeof action === 'string' && action.startsWith('oracle.') && !entry.data.simulated) return action === 'oracle.sources.challenge' ? 'petri_challenge_source' : 'petri_oracle_done';
+      const read = args[0] === 'oracle' ? ORACLE_VIEWS[args[1]] : null;
+      if (read && Array.isArray(entry.data?.[read[1]])) return read[0];
       return TRADE_COMMANDS.includes(entry.data?.command) ? 'petri_trade' : 'petri_command';
     }
     function summary(entry) {
@@ -1005,6 +1031,19 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
         case 'petri_close': return [a.market, a.position === 'all' ? 'all positions' : a.position && `position ${a.position}`, a.lots && `${a.lots} lots`].filter(Boolean).join(' · ');
         case 'petri_report_progress': return a.message || '';
         case 'petri_oracle': return [a.view, a.market].filter(Boolean).join(' · ');
+        case 'petri_challenges': return Array.isArray(d.open) ? `${d.open.length} open · ${(d.challenges || []).length} yours` : a.market || '';
+        case 'petri_challenge_source': return [REASON_WORDS[a.reason] || a.reason, domain(d.details?.url) || a.month].filter(Boolean).join(' · ');
+        case 'petri_prints': return Array.isArray(d.open) ? `${d.open.length} open${d.owner ? ` · ${(d.prints || []).length} yours` : ''}${d.unclaimed?.length ? ` · ${d.unclaimed.length} waiting` : ''}` : a.market || '';
+        case 'petri_updates': return Array.isArray(d.open) ? `${d.open.length} open${d.owner ? ` · ${(d.updates || []).length} yours` : ''}${d.sources?.length ? ` · ${d.sources.length} take updates` : ''}` : a.market || '';
+        case 'petri_stakes': return d.totals ? [toNum(d.totals.settleableAtoms) ? `${money(d.totals.settleableAtoms)} to settle` : null, `${money(d.totals.lockedAtoms)} locked`].filter(Boolean).join(' · ') : a.market || '';
+        case 'petri_series_template': return d.bucket?.name || a.bucket || '';
+        case 'petri_series_check': return routingWord(d.routing) || '';
+        case 'petri_observe_template': case 'petri_propose_series': case 'petri_support_source': case 'petri_challenge_print': case 'petri_challenge_update': case 'petri_claim_rewards':
+          return expiryIdLabel(monthId(d.details?.month) || a.month) || '';
+        case 'petri_observe': case 'petri_print': return [expiryIdLabel(monthId(d.details?.month) || a.month), bucketOf(d.details) || bucketOf(d.details?.source)].filter(Boolean).join(' · ');
+        case 'petri_collateral': return a.action && a.usdc ? `${a.action === 'deposit' ? 'Add' : 'Withdraw'} ${a.usdc === 'all' ? 'all' : `${a.usdc} USDC`}` : '';
+        case 'petri_sponsor': return expiryIdLabel(monthId(d.details?.month)) || '';
+        case 'petri_oracle_step': return typeof a.command === 'string' ? a.command.replace(/^petri\s+oracle\s+/, '').split(/\s+/).slice(0, 2).join(' ') : '';
         case 'petri_bots': return Array.isArray(d.bots) ? `${d.bots.length} bot${d.bots.length === 1 ? '' : 's'}${d.bots.some(b => b.running) ? ` · ${d.bots.filter(b => b.running).length} running` : ''}` : '';
         case 'petri_bot_new': return d.created || a.market || '';
         case 'petri_bot_write': return botName(d.bot) || d.written || '';
@@ -1031,6 +1070,13 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
         case 'petri_trade': return null;
         case 'petri_oracle': return entry.args?.view === 'months' || entry.args?.view === 'history' ? h(OracleMonths, { data: d }) : h(Value, { value: d });
         case 'petri_login': return h(LoginBody, { data: d, petri });
+        case 'petri_challenges': return h(ChallengesBody, { data: d });
+        case 'petri_challenge_source': return h(ChallengeFiled, { data: d });
+        case 'petri_prints': return h(PrintsBody, { data: d });
+        case 'petri_updates': return h(UpdatesBody, { data: d });
+        case 'petri_stakes': return h(StakesBody, { data: d });
+        case 'petri_series_check': return h(SeriesCheck, { data: d });
+        case 'petri_oracle_done': return h(OracleDone, { data: d });
         case 'petri_work_list': case 'petri_work_next': case 'petri_work_start': return h(WorkBody, { data: d });
         case 'petri_report_progress': return null;
         case 'petri_bot': return h(BotsBody, { entry, petri });
@@ -1047,7 +1093,7 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       const [open, setOpen] = useState(true);
       const running = entry.state === 'preparing' || entry.state === 'running';
       // A chat that used research or bots keeps Petri's strip; market reads alone don't bring it.
-      const kind = RESEARCH_TOOLS.includes(entry.name) ? 'research' : BOT_TOOLS.includes(entry.name) ? 'bots' : null;
+      const kind = RESEARCH_TOOLS.includes(entry.name) || ORACLE_TOOLS.includes(entry.name) ? 'research' : BOT_TOOLS.includes(entry.name) ? 'bots' : null;
       useEffect(() => { if (kind) petri?.note(kind); }, [petri, kind]);
       // Only a call that ran while this chat was open moves the sidebar; history replays never do.
       // A bot the agent just made, changed, started or installed opens in the Bots tab; a read of one doesn't.
@@ -1060,12 +1106,15 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       }, [petri, botId]);
       const failed = entry.state === 'error' || entry.state === 'stopped';
       // Trades and market reads have no card: the row says what ran.
-      const drawn = entry.state === 'ok' && entry.name !== 'petri_report_progress' && !TRADE_TOOLS.includes(entry.name) && viewName(entry) !== 'petri_trade';
+      const drawn = entry.state === 'ok' && !QUIET_TOOLS.includes(entry.name) && !TRADE_TOOLS.includes(entry.name) && viewName(entry) !== 'petri_trade';
+      // A write the agent just sent shows in the Petri tab at once, not at its next poll.
+      const wrote = entry.state === 'ok' && viewName(entry) === 'petri_oracle_done';
+      useEffect(() => { if (wrote && firstPhase.current !== 'result') bumpWorkspace(); }, [wrote]);
       const body = drawn ? h(EntryBody, { entry, petri }) : null;
       return h('div', { className: 'ptr ptr-card', 'data-petri-tool': entry.name, 'data-state': entry.state },
         h('div', { className: 'ptr-row', 'data-expandable': body ? '' : undefined, onClick: body ? () => setOpen(o => !o) : undefined },
           h('span', { className: 'ptr-lead' }, h(Glyph)),
-          h(Shimmer, { active: running, className: 'ptr-title' }, TITLES[entry.name] || 'Petri'),
+          h(Shimmer, { active: running, className: 'ptr-title' }, entry.name === 'petri_print' && entry.args?.stage === 'update' ? 'Update' : TITLES[entry.name] || 'Petri'),
           entry.name === 'petri_report_progress' && entry.args?.kind ? h(Fragment, null, h('span', { className: 'ptr-sep' }), h('span', { className: 'ptr-title' }, KINDS[entry.args.kind] || entry.args.kind)) : null,
           summary(entry) || failed ? h(Fragment, null, h('span', { className: 'ptr-sep' }),
             h('span', { className: `ptr-summary${failed ? ' ptr-err' : ''}`, title: failed ? entry.text : undefined },
@@ -1075,7 +1124,7 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
 
     // ---------------------------------------------------------------- turn tail
     // Petri results of a finished turn, kept under the answer where folding cannot hide them.
-    const TAIL_ORDER = ['petri_login', 'petri_bot', 'petri_bot_hub', 'petri_work_next', 'petri_work_start'];
+    const TAIL_ORDER = ['petri_login', 'petri_oracle_done', 'petri_challenge_source', 'petri_challenges', 'petri_prints', 'petri_updates', 'petri_stakes', 'petri_bot', 'petri_bot_hub', 'petri_work_next', 'petri_work_start'];
     const petriDefinition = {
       kind: 'petri',
       match(event) {
@@ -1118,7 +1167,9 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
         // Each bot keeps its latest card, each registry read its latest list.
         const key = view === 'petri_bot' ? `${view}:${entry.data?.bot?.id || entry.data?.written || entry.data?.installed || entry.data?.created || entry.data?.removed || (Array.isArray(entry.data?.bots) ? 'all' : '')}`
           : view === 'petri_bot_hub' ? `${view}:${entry.name === 'petri_bot_show' ? entry.data?.id : entry.name}`
-            : view;
+            // Each oracle write keeps its own card.
+            : view === 'petri_oracle_done' || view === 'petri_challenge_source' ? `${view}:${entry.callId}`
+              : view;
         latest.set(key, { ...entry, view });
       }
       const login = [...latest.values()].filter(e => e.view === 'petri_login');
@@ -1134,6 +1185,213 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
         key: entry.callId,
         head: h(PanelHead, { title: TITLES[entry.view] || 'Petri', subtitle: summary({ ...entry, name: entry.name }) }),
       }, h(EntryBody, { entry, petri }))));
+    }
+
+    // ---------------------------------------------------------------- challenges
+    // What petri says of a challenge (`petri oracle challenges`), in a word.
+    const REASON_WORDS = { 'wrong-component': 'Wrong component', unavailable: 'Source unavailable', stale: 'Stale observation',
+      methodology: 'Unsupported methodology', duplicate: 'Duplicate source', other: 'Other' };
+    const CHALLENGE_WORDS = { waiting: 'Ruled on day 7', council: 'With the council', 'upheld-rejected': 'Upheld', 'upheld-merged': 'Upheld, merged',
+      dismissed: 'Dismissed', cancelled: 'Cancelled', settled: 'Settled' };
+    const monthId = m => typeof m === 'string' ? m : m?.expiryId;
+    const atUtc = utc => { const t = Date.parse(utc || ''); return Number.isFinite(t) ? clock(t / 1000) : ''; };
+    function challengeRow(c, i) {
+      return h(Row, { key: c.challenge || i, title: domain(c.url) || c.bucketName || short(c.source), href: c.url,
+        sub: [expiryIdLabel(monthId(c.month)), c.role === 'proposer' ? 'against your source' : REASON_WORDS[c.reason] || c.reason].filter(Boolean).join(' · '),
+        status: CHALLENGE_WORDS[c.status] || c.statusText, statusTitle: c.statusText, hint: c.why || undefined });
+    }
+    // Open sources, a row a month: how many, and until when.
+    function openByMonth(open) {
+      const months = new Map();
+      for (const o of open) {
+        const id = monthId(o.month);
+        const m = months.get(id) || { id, count: 0, closes: o.windowClosesUtc };
+        m.count += 1;
+        months.set(id, m);
+      }
+      return [...months.values()];
+    }
+    function ChallengesBody({ data }) {
+      const open = Array.isArray(data?.open) ? data.open : [], mine = Array.isArray(data?.challenges) ? data.challenges : [];
+      if (!open.length && !mine.length) return h('div', { className: 'ptr-empty' }, 'Nothing open to challenge, and no challenges of yours.');
+      return h('div', { className: 'ptr-stack', style: { gap: 10 } },
+        open.length ? h('div', { className: 'ptr-cap' }, 'Open to challenge') : null,
+        open.length ? h(Rows, { list: open, max: 6, render: (o, i) => h(Row, { key: o.source || i, title: domain(o.url) || short(o.source), href: o.url,
+          sub: [expiryIdLabel(monthId(o.month)), o.bucketName].filter(Boolean).join(' · '),
+          status: `Bond ${usdc(atomsToUsd(o.bondAtoms))}`, statusTitle: `Open until ${atUtc(o.windowClosesUtc)}` }) }) : null,
+        mine.length ? h('div', { className: 'ptr-cap' }, 'Yours') : null,
+        mine.length ? h(Rows, { list: mine, max: 6, render: challengeRow }) : null);
+    }
+    function ChallengeFiled({ data }) {
+      const d = data?.details || data || {};
+      if (!d.challenge) return h(Value, { value: data });
+      return h('div', { className: 'ptr-stack', style: { gap: 6 } },
+        h('div', { className: 'ptr-line ptr-between ptr-wrap' },
+          h('span', null, h(DoneIcon), ' Challenged ', d.url ? h('a', { className: 'ptr-a', href: d.url, target: '_blank', rel: 'noreferrer' }, domain(d.url)) : short(d.source?.source)),
+          h('span', { className: 'ptr-cap' }, [REASON_WORDS[d.reason] || d.reason, d.bondAtoms ? `bond ${usdc(atomsToUsd(d.bondAtoms))}` : null].filter(Boolean).join(' · '))),
+        d.ruledByUtc ? h('div', { className: 'ptr-note' }, `Ruled on by ${atUtc(d.ruledByUtc)}.`) : null);
+    }
+
+    // ---------------------------------------------------------------- prints and updates
+    // How petri says an opening print or an update stands (`petri oracle prints`, `updates`), in a word.
+    const PRINT_WORDS = { challengeable: 'Open to challenge', acceptable: 'Ready to accept', challenged: 'Challenged', council: 'With the council',
+      kept: 'Kept', replaced: 'Replaced', rejected: 'Rejected', accepted: 'Accepted', cancelled: 'Cancelled', expired: 'Locked', settled: 'Settled' };
+    const UPDATE_WORDS = { committed: 'To reveal', expired: 'Not revealed', challengeable: 'Open to challenge', stale: 'Stale', challenged: 'Challenged',
+      council: 'With the council', accepted: 'Accepted', replaced: 'Replaced', rejected: 'Rejected', cancelled: 'Timed out', settled: 'Settled',
+      // A challenge's own standing, when the row is the user's challenge.
+      waiting: 'Waiting for ruling', upheld: 'Upheld', dismissed: 'Dismissed', neither: 'Neither' };
+    const listOf = value => Array.isArray(value) ? value : [];
+    const money = atoms => usdc(atomsToUsd(atoms));
+    const plural = (n, word, many) => `${n} ${n === 1 ? word : many || `${word}s`}`;
+    // A bucket by its name; a month on registry ids has only a 64-hex id, which says nothing to a person.
+    const bucketOf = x => /^[0-9a-f]{64}$/i.test(x?.bucketName || '') ? null : x?.bucketName || null;
+    // A source by its page: the site and the path, since one site often has several sources.
+    const page = url => { try { const u = new URL(url); return `${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/$/, '')}`; } catch { return null; } };
+    const placeName = x => page(x?.url) || bucketOf(x) || short(x?.source);
+    const monthBucket = x => [expiryIdLabel(monthId(x?.month)), bucketOf(x)].filter(Boolean).join(' · ');
+    // One row a month for what is open there: how many, the soonest it closes, and the price of
+    // each when they all cost the same.
+    function perMonth(list, closes) {
+      const months = new Map();
+      for (const x of list) {
+        const id = monthId(x.month);
+        const m = months.get(id) || { id, count: 0, until: x[closes], atoms: new Set() };
+        m.count += 1;
+        if (x[closes] && (!m.until || Date.parse(x[closes]) < Date.parse(m.until))) m.until = x[closes];
+        m.atoms.add(String(x.bondAtoms ?? x.stakeAtoms ?? ''));
+        months.set(id, m);
+      }
+      return [...months.values()].map(m => ({ ...m, each: m.atoms.size === 1 ? [...m.atoms][0] || null : null }));
+    }
+    const untilSub = m => [expiryIdLabel(m.id), m.until ? `until ${atUtc(m.until)}` : null].filter(Boolean).join(' · ');
+    // A print or update of the user's: theirs, or one they challenged (then their challenge's standing).
+    function claimRow(words, change) {
+      return (x, i) => {
+        const standing = x.role === 'challenging' && x.challenge ? x.challenge : x;
+        return h(Row, { key: x.claim || i, title: placeName(x), href: x.url,
+          sub: [x.role === 'challenging' ? 'You challenged' : null, monthBucket(x), change(x)].filter(Boolean).join(' · '),
+          status: words[standing.status] || standing.statusText, statusTitle: standing.statusText, hint: x.evidence || undefined });
+      };
+    }
+    const printRow = claimRow(PRINT_WORDS, x => x.value);
+    const updateRow = claimRow(UPDATE_WORDS, x => x.prior && x.value ? `${x.prior} → ${x.value}` : x.value);
+    const openRow = (change, closes) => (o, i) => h(Row, { key: o.claim || i, title: placeName(o), href: o.url, sub: [monthBucket(o), change(o)].filter(Boolean).join(' · '),
+      status: `Bond ${money(o.bondAtoms)}`, statusTitle: o[closes] ? `Open until ${atUtc(o[closes])}` : undefined, hint: o.evidence || undefined });
+    const cap = text => h('div', { className: 'ptr-cap' }, text);
+    function PrintsBody({ data }) {
+      const open = listOf(data?.open), mine = listOf(data?.prints), waiting = listOf(data?.unclaimed);
+      if (!open.length && !mine.length && !waiting.length) return h('div', { className: 'ptr-empty' }, 'No opening prints open, and none of yours.');
+      return h('div', { className: 'ptr-stack', style: { gap: 10 } },
+        open.length ? cap('Open to challenge') : null,
+        open.length ? h(Rows, { list: open, render: openRow(o => o.value, 'challengeableUntilUtc') }) : null,
+        mine.length ? cap(data.owner ? 'Yours' : 'Not settled yet') : null,
+        mine.length ? h(Rows, { list: mine, render: printRow }) : null,
+        waiting.length ? cap('Waiting for a print') : null,
+        waiting.length ? h(Rows, { list: waiting, render: (w, i) => h(Row, { key: w.source || i, title: placeName(w), href: w.url, sub: monthBucket(w),
+          status: `Stake ${money(w.stakeAtoms)}`, statusTitle: w.openingClosesUtc ? `Until ${atUtc(w.openingClosesUtc)}` : undefined }) }) : null);
+    }
+    function UpdatesBody({ data }) {
+      const open = listOf(data?.open), mine = listOf(data?.updates), sources = listOf(data?.sources);
+      if (!open.length && !mine.length && !sources.length) return h('div', { className: 'ptr-empty' }, 'No updates open, and none of yours.');
+      return h('div', { className: 'ptr-stack', style: { gap: 10 } },
+        open.length ? cap('Open to challenge') : null,
+        open.length ? h(Rows, { list: open, render: openRow(o => o.prior && o.value ? `${o.prior} → ${o.value}` : o.value, 'acceptFromUtc') }) : null,
+        mine.length ? cap(data.owner ? 'Yours' : 'Not settled yet') : null,
+        mine.length ? h(Rows, { list: mine, render: updateRow }) : null,
+        sources.length ? cap('Take updates') : null,
+        sources.length ? h(Rows, { list: sources, max: 4, render: (s, i) => h(Row, { key: s.source || i, title: placeName(s), href: s.url,
+          sub: [monthBucket(s), s.value ? `now ${s.value}` : null].filter(Boolean).join(' · '), status: `Stake ${money(s.stakeAtoms)}`,
+          statusTitle: s.sourceTimeUtc ? `Priced ${atUtc(s.sourceTimeUtc)}` : undefined }) }) : null);
+    }
+    // A series checked against the spec: its status, and what to fix.
+    function SeriesCheck({ data }) {
+      const reasons = listOf(data?.routing?.reasons).filter(r => r?.message);
+      return h('div', { className: 'ptr-stack', style: { gap: 6 } },
+        h('div', { className: 'ptr-line ptr-between ptr-wrap' },
+          h('b', { style: { fontWeight: 600 } }, routingWord(data?.routing) || (data?.admissible ? 'Fits' : 'Does not fit')),
+          data?.month ? h('span', { className: 'ptr-cap' }, expiryIdLabel(monthId(data.month))) : null),
+        reasons.length ? h('ul', { className: 'ptr-list' }, reasons.map((r, i) => h('li', { key: i, className: 'ptr-note' }, [r.field, r.message].filter(Boolean).join(': ')))) : null);
+    }
+
+    // Bonds and stakes (`petri oracle stakes`): what is held, what settles now, and what never can.
+    const STAKE_KINDS = { 'listing-bond': 'Listing bond', 'support-stake': 'Support stake', 'source-challenge': 'Source challenge', 'opening-claim': 'Opening print',
+      'opening-challenge': 'Print challenge', 'update-claim': 'Update', 'update-challenge': 'Update challenge', 'sponsorship-bond': 'Sponsorship' };
+    function stakeStatus(x) {
+      switch (x.status) {
+        case 'settleable': return toNum(x.toYouAtoms) ? `Settle ${money(x.toYouAtoms)}` : 'Pays someone else';
+        case 'locked': return x.role === 'owed' ? 'Owed to you' : 'Locked';
+        case 'stuck': return 'Stuck';
+        case 'settled': return 'Settled';
+        default: return x.statusText || x.status;
+      }
+    }
+    const stakeRow = (x, i) => h(Row, { key: `${x.kind}:${x.claim || x.challenge || x.agreement || x.source}:${i}`, title: placeName(x), href: x.url,
+      sub: [monthBucket(x), STAKE_KINDS[x.kind] || humanKey(x.kind || ''), money(x.amountAtoms)].filter(Boolean).join(' · '),
+      status: stakeStatus(x), statusTitle: x.statusText });
+    function StakesBody({ data }) {
+      const list = listOf(data?.stakes), t = data?.totals || {};
+      if (!list.length) return h('div', { className: 'ptr-empty' }, 'No bonds or stakes in the oracle.');
+      return h('div', { className: 'ptr-stack', style: { gap: 10 } },
+        h(Figures, { items: [['Locked', usd(t.lockedAtoms)], ['To settle', usd(t.settleableAtoms), toNum(t.settleableAtoms) ? 'ptr-up' : ''],
+          toNum(t.stuckAtoms) ? ['Stuck', usd(t.stuckAtoms), 'ptr-down'] : null].filter(Boolean) }),
+        h(Rows, { list, render: stakeRow }));
+    }
+
+    // ---------------------------------------------------------------- oracle writes
+    // What an oracle write did, in a line, from petri's result: its action and details.
+    const STAKE_WORDS = { ListingBond: 'listing bond', SupportStake: 'support stake', SourceChallenge: 'challenge bond', OpeningClaim: 'opening print’s stake',
+      OpeningChallenge: 'challenge bond', UpdateClaim: 'update’s stake', UpdateChallenge: 'challenge bond' };
+    const decimal = atoms => { const n = toNum(atoms); return n === null ? null : String(n / 1e6); };
+    function doneLine(action, d, data) {
+      const source = isRecord(d.source) ? d.source : { source: d.source };
+      const place = { url: d.url, bucketName: bucketOf(d) || bucketOf(source), source: source.source };
+      const value = d.value || decimal(d.valueAtoms) || '';
+      const stake = d.stakeAtoms ? `stake ${money(d.stakeAtoms)}` : null, bond = d.bondAtoms ? `bond ${money(d.bondAtoms)}` : null;
+      const open = d.challengeableUntilUtc ? `Open to challenge until ${atUtc(d.challengeableUntilUtc)}.` : null;
+      switch (action) {
+        case 'oracle.collateral.deposit': return { text: `Added ${money(d.amountAtoms)} to your collateral` };
+        case 'oracle.collateral.withdraw': return { text: `Moved ${money(d.amountAtoms)} back to your wallet` };
+        case 'oracle.series.propose': case 'oracle.sources.propose': return { text: 'Proposed', place, cap: bond && `listing ${bond}` };
+        case 'oracle.sources.support': return { text: 'Supported', place, cap: stake };
+        case 'oracle.sponsor': return { text: 'Sponsored a find', cap: bond };
+        case 'oracle.prints.opening': case 'oracle.observe.opening':
+          return d.accepted === true ? { text: `Sent and accepted the opening print ${value} for`, place, cap: stake }
+            : { text: `Sent the opening print ${value} for`, place, cap: stake,
+              note: d.acceptFromUtc ? `Open to challenge until ${atUtc(d.acceptFromUtc)}; accept it then${d.openingClosesUtc ? `, before the listing at ${atUtc(d.openingClosesUtc)}` : ''}.` : open };
+        case 'oracle.updates.commit': case 'oracle.observe.update':
+          return data.revealed === false ? { text: 'Committed an update for', place, cap: stake, warn: true,
+            note: `${data.error?.message ? `${data.error.message.replace(/^./, c => c.toUpperCase())}. ` : ''}Reveal it by ${atUtc(d.revealByUtc)}; after that its stake comes back.` }
+            : data.revealed !== true && d.revealCommand ? { text: 'Committed an update for', place, cap: stake, note: d.revealByUtc ? `Reveal it by ${atUtc(d.revealByUtc)}.` : null }
+            : { text: `Sent the update${d.prior && value ? ` ${d.prior} → ${value}` : value ? ` ${value}` : ''} for`, place, cap: stake,
+              note: d.acceptFromUtc ? `Open to challenge until ${atUtc(d.acceptFromUtc)}; the keeper accepts it then.` : null };
+        case 'oracle.updates.reveal': return { text: 'Revealed the update for', place, note: d.acceptFromUtc ? `Accepted from ${atUtc(d.acceptFromUtc)} unless challenged.` : null };
+        case 'oracle.prints.challenge': return { text: `Challenged the opening print with ${value} for`, place, cap: bond,
+          note: d.ruledByUtc ? `The oracle authority rules on it by ${atUtc(d.ruledByUtc)}.` : null };
+        case 'oracle.updates.challenge': return { text: `Challenged the update with ${value} for`, place, cap: bond };
+        case 'oracle.prints.finalize': return { text: 'Accepted the opening print for', place };
+        case 'oracle.prints.expire': return { text: 'Marked an unclaimed source inactive:', place };
+        case 'oracle.updates.expire': return { text: 'Refunded the update nobody revealed for', place };
+        case 'oracle.stakes.settle': return { text: `Settled the ${STAKE_WORDS[d.kind] || humanKey(d.kind || 'stake').toLowerCase()} for`, place, note: 'It is in its owner’s collateral.' };
+        case 'oracle.stakes.settle-all': {
+          const list = listOf(d.settled ?? data.settled), skipped = listOf(d.skipped ?? data.skipped);
+          return list.length ? { text: `Settled ${plural(list.length, 'bond or stake', 'bonds and stakes')}: ${money(d.totalToYouAtoms)} back in your collateral` }
+            : { text: 'Nothing settles to you now', note: skipped.length ? `${plural(skipped.length, 'one pays', 'pay')} someone else once settled.` : null };
+        }
+        case 'oracle.rewards.claim': return { text: `Claimed ${money(d.totalAtoms)} of rewards`, note: 'It is in your collateral.' };
+        case 'oracle.sponsorships.settle': return { text: 'Settled the sponsorship', note: 'Its bond is back in your collateral.' };
+        case 'oracle.sponsorships.claim': return { text: 'Claimed the sponsorship’s reward' };
+        default: return { text: humanKey(String(action || 'done').split('.').slice(1).join(' ')) };
+      }
+    }
+    function OracleDone({ data }) {
+      if (!data?.action) return h(Value, { value: data });
+      const d = data.details || {}, line = doneLine(data.action, d, data);
+      const p = line.place, label = p ? domain(p.url) || p.bucketName || short(p.source) : null;
+      return h('div', { className: 'ptr-stack', style: { gap: 6 } },
+        h('div', { className: 'ptr-line ptr-between ptr-wrap' },
+          h('span', null, line.warn ? null : h(DoneIcon), line.warn ? null : ' ', line.text, label ? ' ' : null, label ? p.url ? h('a', { className: 'ptr-a', href: p.url, target: '_blank', rel: 'noreferrer' }, label) : label : null),
+          line.cap ? h('span', { className: 'ptr-cap' }, line.cap) : null),
+        line.note ? h('div', { className: line.warn ? 'ptr-alert' : 'ptr-note' }, line.note) : null);
     }
 
     // ---------------------------------------------------------------- composer dock
@@ -1391,22 +1649,89 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
       return result;
     }
 
-    // The oracle beside the chat: what you hold there, the finds, rewards and your proofs.
+    // The oracle beside the chat: each month's stage, your part in every stage, what you hold
+    // there, the finds, rewards and your proofs.
     const usd = atoms => { const n = atomsToUsd(atoms); return n === null ? '—' : `$${fixed(n)}`; };
+    // A month's stages as the oracle runs them (oracle/docs/architecture.md, "Lifecycle of one
+    // cohort"): sources until Scramble day 4, challenges on days 5 and 6 and their ruling on day 7,
+    // opening prints the day before the listing, Game until expiry, then settlement.
+    const STAGES = ['Sources', 'Challenges', 'Opening', 'Game', 'Settled'];
+    const STAGE_READS = ['challenges', 'prints', 'updates', 'stakes'];
+    // Spaced out, since Solana's public RPC turns away a burst of these scans.
+    const STAGE_GAP_MS = 15000;
+    const pause = (ms, signal) => new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+    });
+    const RATE_LIMITED = /is limiting requests/i;
+    const RATE_LIMIT_WORDS = 'Solana’s public RPC is limiting Petri’s reads. Set an RPC provider’s address in the Petri plugin’s settings (rpc) to see this.';
+    const DAY = 86400;
+    function stageOf(m, now) {
+      const t = key => { const v = Date.parse(m.schedule?.[key] || ''); return Number.isFinite(v) ? v / 1000 : null; };
+      const scramble = t('scrambleStartUtc'), listing = t('listingUtc'), expiry = t('expiryUtc');
+      const until = ts => ts ? ` until ${clock(ts)}` : '';
+      switch (m.phase) {
+        case 'Settled': case 'Closed': return { at: 4, words: 'Settled' };
+        case 'Game': return expiry && now >= expiry ? { at: 4, words: 'Settling' } : { at: 3, words: `Trading, taking updates${until(expiry)}` };
+        case 'Opening': return { at: 2, words: `Opening prints${until(listing)}` };
+        case 'Scramble':
+          if (!scramble || now < scramble + 4 * DAY) return { at: 0, words: `Taking sources${until(scramble && scramble + 4 * DAY)}` };
+          if (now < scramble + 6 * DAY) return { at: 1, words: `Challenges${until(scramble + 6 * DAY)}` };
+          return { at: 1, words: `Ruling on challenges${until(scramble + 7 * DAY)}` };
+        default: return { at: 0, words: 'Taking sources' };
+      }
+    }
+    function StageTrack({ at }) {
+      return h('span', { className: 'ptr-track', role: 'img', 'aria-label': STAGES[at] },
+        STAGES.map((s, i) => h('i', { key: s, 'data-done': i < at ? '' : undefined, 'data-on': i === at ? '' : undefined })));
+    }
+    // A finished bond, stake or print the user can settle or accept now.
+    const due = list => list.some(x => !x.settled && (x.settleCommand || x.acceptCommand || x.expireCommand || (x.challenge && !x.challenge.settled && x.challenge.settleCommand)));
     function OraclePane({ petri, live, ask }) {
       const tick = useStore(workspaceTick);
       const read = args => signal => petri.call({ action: 'command', args }, signal);
       const opts = { interval: 30000, enabled: live };
+      // The stage reads scan the chain (getProgramAccounts), which a public RPC rate-limits: one
+      // after another, every five minutes, and at once after a write in the chat. Each keeps its
+      // own error, so one refused read leaves the others standing.
       const collateral = useLoad(read(['oracle', 'collateral']), [petri, tick], opts);
       const rewards = useLoad(read(['oracle', 'rewards']), [petri, tick], opts);
       const candidates = useLoad(read(['oracle', 'candidates']), [petri, tick], opts);
       const evidence = useLoad(read(['evidence', 'list']), [petri, tick], opts);
+      const oracleMonths = useLoad(read(['oracle', 'months']), [petri, tick], { interval: 60000, enabled: live });
+      const stages = useLoad(async signal => {
+        const out = {};
+        for (const [i, key] of STAGE_READS.entries()) {
+          if (i) await pause(STAGE_GAP_MS, signal);
+          try { out[key] = { data: await read(['oracle', key])(signal) }; } catch (error) {
+            if (signal.aborted) throw error;
+            out[key] = { error: RATE_LIMITED.test(error.message) ? RATE_LIMIT_WORDS : error.message || String(error) };
+          }
+        }
+        return out;
+      }, [petri, tick], { interval: 300000, enabled: live });
+      const stage = key => stages.data?.[key] || {};
+      const challenges = stage('challenges'), printsRead = stage('prints'), updatesRead = stage('updates'), stakesRead = stage('stakes');
       const noWallet = [collateral, rewards].map(r => r.error).find(e => e && NO_WALLET.test(e));
       if (noWallet) return h(Block, null, h(NoWallet, { error: noWallet }));
       const c = collateral.data, months = Array.isArray(rewards.data?.months) ? rewards.data.months : [];
       const claimable = months.reduce((sum, m) => sum + (toNum(m.claimableAtoms) || 0), 0);
       const finds = Array.isArray(candidates.data?.candidates) ? candidates.data.candidates : [];
       const proofs = Array.isArray(evidence.data?.proofs) ? evidence.data.proofs : [];
+      const mine = Array.isArray(challenges.data?.challenges) ? challenges.data.challenges : [];
+      const open = Array.isArray(challenges.data?.open) ? challenges.data.open : [];
+      const prints = listOf(printsRead.data?.prints), printsOpen = listOf(printsRead.data?.open), waiting = listOf(printsRead.data?.unclaimed);
+      const updates = listOf(updatesRead.data?.updates), updatesOpen = listOf(updatesRead.data?.open), updatable = listOf(updatesRead.data?.sources);
+      // The chain's clock where a read gives it (a dev chain runs behind), else this computer's.
+      const chainNow = [challenges, printsRead, updatesRead].map(r => Date.parse(r.data?.chainTimeUtc || '')).find(Number.isFinite);
+      const now = (chainNow || Date.now()) / 1000;
+      const current = listOf(oracleMonths.data?.months).filter(m => m.phase !== 'Settled' && m.phase !== 'Closed' && m.phase !== 'Uninitialized')
+        .sort((a, b) => (Date.parse(a.schedule?.expiryUtc || '') || 0) - (Date.parse(b.schedule?.expiryUtc || '') || 0) || String(a.expiryId).localeCompare(String(b.expiryId)));
+      const totals = stakesRead.data?.totals || {};
+      const stakeList = listOf(stakesRead.data?.stakes).filter(x => x.status === 'settleable' || x.status === 'stuck' || (x.status === 'locked' && x.nextCommand));
+      const settle = toNum(totals.settleableAtoms) > 0 || due(prints);
+      const reveal = updates.some(u => u.revealCommand);
+      const challengeable = [open.length && 'sources', printsOpen.length && 'opening prints', updatesOpen.length && 'updates'].filter(Boolean);
       return h(Fragment, null,
         h(Block, null,
           c || rewards.data ? h(Figures, { items: [
@@ -1415,6 +1740,25 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
             ['To claim', rewards.data ? usd(claimable) : '—', claimable > 0 ? 'ptr-up' : ''],
           ] }) : null,
           h(Alert, { error: [collateral, rewards].map(r => r.error).find(Boolean) })),
+        current.length ? h(Block, { title: 'Months' },
+          h('ul', { className: 'ptr-rows' }, current.map(m => { const s = stageOf(m, now); return h(Row, { key: m.expiryId, title: expiryIdLabel(m.expiryId), sub: s.words,
+            status: h(StageTrack, { at: s.at }), statusTitle: STAGES[s.at] }); }))) : null,
+        open.length || mine.length ? h(Block, { title: 'Challenges' },
+          h('ul', { className: 'ptr-rows' }, openByMonth(open).map(m => h(Row, { key: m.id, title: `${m.count} source${m.count === 1 ? '' : 's'} open to challenge`,
+            sub: `${expiryIdLabel(m.id)} · until ${atUtc(m.closes)}` }))),
+          h(Rows, { list: mine, max: 4, render: challengeRow })) : null,
+        waiting.length || printsOpen.length || prints.length ? h(Block, { title: 'Opening prints' },
+          h('ul', { className: 'ptr-rows' },
+            perMonth(waiting, 'openingClosesUtc').map(m => h(Row, { key: `w:${m.id}`, title: `${plural(m.count, 'source')} waiting for a print`, sub: untilSub(m), status: m.each ? `Stake ${money(m.each)}` : null })),
+            perMonth(printsOpen, 'challengeableUntilUtc').map(m => h(Row, { key: `o:${m.id}`, title: `${plural(m.count, 'print')} open to challenge`, sub: untilSub(m), status: m.each ? `Bond ${money(m.each)}` : null }))),
+          h(Rows, { list: prints, max: 4, render: printRow }), h(Alert, { error: printsRead.error })) : null,
+        updatable.length || updatesOpen.length || updates.length ? h(Block, { title: 'Updates' },
+          h('ul', { className: 'ptr-rows' },
+            perMonth(updatesOpen, 'acceptFromUtc').map(m => h(Row, { key: `o:${m.id}`, title: `${plural(m.count, 'update')} open to challenge`, sub: untilSub(m), status: m.each ? `Bond ${money(m.each)}` : null })),
+            perMonth(updatable, null).map(m => h(Row, { key: `s:${m.id}`, title: `${plural(m.count, 'source')} take updates`, sub: expiryIdLabel(m.id), status: m.each ? `Stake ${money(m.each)}` : null }))),
+          h(Rows, { list: updates, max: 4, render: updateRow }), h(Alert, { error: updatesRead.error })) : null,
+        stakeList.length || toNum(totals.lockedAtoms) ? h(Block, { title: 'Bonds and stakes' },
+          h(Rows, { list: stakeList, max: 4, empty: `${usd(totals.lockedAtoms)} locked while their stages run.`, render: stakeRow }), h(Alert, { error: stakesRead.error })) : null,
         h(Block, { title: 'Research finds' },
           h(Rows, { list: finds, max: 5, empty: candidates.data ? 'No finds yet.' : null, render: (x, i) => {
             const d = x.details || {};
@@ -1428,6 +1772,11 @@ textarea.ptr-input{height:auto;min-height:64px;padding:7px 9px;resize:vertical}
           h(Rows, { list: proofs, max: 4, render: (p, i) => h(Row, { key: p.digest || i, at: p.addedAt, title: domain(p.locator) || p.locator, sub: [p.product, p.price].filter(Boolean).join(' · '),
             href: p.locator, status: p.events?.length ? 'Sent' : 'Not sent', hint: p.events?.[p.events.length - 1]?.summary }) })) : null,
         h(Block, null, h(Asks, { ask, items: [
+          reveal ? ['Reveal my update', 'Reveal my committed Petri oracle update before its deadline.'] : null,
+          settle ? ['Settle what’s done', 'Settle my finished Petri oracle bonds and stakes into my collateral, and accept my opening prints that are past their challenge window.'] : null,
+          waiting.length ? ['Send opening prints', 'Send the opening prints Petri’s oracle still needs: read each waiting source’s price from its page and archive the page. Tell me the prices and what the stakes cost before sending any.'] : null,
+          challengeable.length ? ['Check what’s open to challenge', `Check the Petri oracle ${challengeable.join(', ')} open to challenge against their pages and evidence, and tell me which look wrong and why. Don’t challenge any yet.`] : null,
+          updatable.length ? ['Look for newer prices', 'Check the sources of the Petri months in Game for prices newer than their current values, and tell me which changed and what an update costs. Don’t send any yet.'] : null,
           finds.length ? ['Which finds should I sponsor?', 'Look at Petri’s research finds and tell me which are worth sponsoring, and what each would cost.'] : null,
           claimable > 0 ? ['Claim my rewards', 'Claim my Petri oracle rewards.'] : null,
           ['Add collateral', 'Help me add bond collateral on Petri.'],

@@ -19,7 +19,7 @@ seats (no separate page):
 | In the transcript, as the agent works | A card for research and bot calls: "DeepSeek wants to research for you" with Approve and Reject, assignments, a bot with its P&L and Start/Stop, published bots and the leaderboard with Install. Market reads and trades show one row (what ran) and no card. | `tool.call.toolview` |
 | Under the agent's final answer | The turn's research and bot results kept visible after Harness folds the work steps | `conversation.chat.turnTail` |
 | Above the composer | A Petri strip in chats that used research or bots: an Approve chip when an agent is waiting to connect, how many bots run, open and hide | `conversation.input.dock` |
-| Beside the chat | **Petri**, a visual aid: Research (an agent waiting to connect, the agent and what it works on — Researching while Petri sees it checking in, otherwise when it was last seen — its activity and the sources it sent) and Oracle (collateral, rewards to claim, research finds, rewards by month, your proofs). Each says what matters in a line per item, with the site's status words; anything the agent can do is a chip that puts the request in the composer. **Bots**: Mine, Discover and Leaderboard. | `sidebarRightTabs`, `sidebar.right.pane.tab` |
+| Beside the chat | **Petri**, a visual aid: Research (an agent waiting to connect, the agent and what it works on — Researching while Petri sees it checking in, otherwise when it was last seen — its activity and the sources it sent) and Oracle (collateral, rewards to claim, each month's stage, and your part in every stage: the sources open to challenge and your challenges, opening prints waiting or open to challenge and yours, Game updates open to challenge, the sources that take them and yours, your bonds and stakes ready to settle or stuck, each with how it stands; research finds, rewards by month, your proofs). Each says what matters in a line per item, with the site's status words; anything the agent can do is a chip that puts the request in the composer. **Bots**: Mine, Discover and Leaderboard. | `sidebarRightTabs`, `sidebar.right.pane.tab` |
 | Conversation header | A Petri button that shows the strip and opens the Petri tab in any chat. A new chat shows no header actions until its first message, so until then the same button sits under its composer, beside the workspace. | `conversation.session.header.actions`, `conversation.hero.options` |
 | The composer's `/` menu | `/petri` opens the Petri tab on Research and `/petri-bots` the Bots tab; both show the strip. They work in any chat, a new one too before anything is sent. | `ctx.commandUi` (client commands) |
 
@@ -74,13 +74,13 @@ Harness 0.2 (0.2.1-rc.3 or later). In Harness, open **Plugins**, click
 install it:
 
 ```text
-https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.1/amoeba-dsh-petri-0.5.1.tgz
+https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.6.0/amoeba-dsh-petri-0.6.0.tgz
 ```
 
 From a terminal instead (`web` for the browser Harness):
 
 ```sh
-dsh plugin --profile desktop add https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.5.1/amoeba-dsh-petri-0.5.1.tgz
+dsh plugin --profile desktop add https://github.com/amoeba-farm/petri-deepseek/releases/download/v0.6.0/amoeba-dsh-petri-0.6.0.tgz
 ```
 
 Reopen Harness if it asks you to. Its package manager may report missing
@@ -102,7 +102,7 @@ development install) is never replaced.
 
 ## Agent tools
 
-Thirty-seven tools are registered in Harness's native registry, which also
+Fifty-six tools are registered in Harness's native registry, which also
 generates their programmatic interface:
 
 - **Markets and trading (no UI):** reads `petri_markets`, `petri_book`,
@@ -115,6 +115,28 @@ generates their programmatic interface:
   drawn, so it says what matters in its reply.
 - **Oracle:** `petri_oracle` reads months, sources, candidates, rewards and
   collateral, drawn as a card.
+- **Oracle stages:** every step a person takes in an oracle month, in the
+  order the month runs (`lib/oracle.mjs`). Collateral: `petri_collateral`
+  (deposit, withdraw). Sources: `petri_series_template`,
+  `petri_series_check`, `petri_propose_series` (a chip month's comparison
+  series, with its exact listing bond), `petri_support_source`,
+  `petri_sponsor` (a research find). Source challenges: `petri_challenges`,
+  `petri_challenge_source` (a reason by name and a public why for the person
+  ruling on day 7). Opening prints and Game updates: `petri_prints`,
+  `petri_updates`, `petri_observe_template`, `petri_observe` (a chip month's
+  observation: the opening print in Opening, an update in Game, committed
+  and revealed in one call), `petri_print` (the same for a month on part
+  numbers), `petri_challenge_print`, `petri_challenge_update`. The money:
+  `petri_stakes` (every bond and stake of the user's: locked, settleable,
+  settled or stuck), `petri_settle_all` (everything that pays the user now),
+  `petri_oracle_step` (one follow-up a read listed, exactly: accept a print,
+  reveal or refund an update, settle one bond or stake, set aside a frozen
+  source, a sponsorship's settle or claim) and `petri_claim_rewards`. Petri computes every bond and
+  stake, refuses what the program would and sends at once (`--yes` in the
+  argv, as for orders). Each draws a card, writes a line saying what was
+  done; the Petri tab's Oracle view keeps the user's part of every stage.
+  Council votes stay in Petri's CLI (`petri oracle emergency`): five seats
+  hold them, not users.
 - **Anything else:** `petri_command` runs any public Petri command as an
   argument array, without a shell. A market or trade command run through it
   draws nothing, like the trade tools.

@@ -17,8 +17,9 @@ import { Workspace } from '../lib/workspace.mjs';
 import { MARKET, QUOTE, TRADE_TOOLS, orderArgs, validateMarketInput } from '../lib/market.mjs';
 
 import { BOT_TOOLS, Bots, validateBotInput } from '../lib/bots.mjs';
+import { ORACLE, REASONS, stepArgs } from '../lib/oracle.mjs';
 
-const TOOL_COUNT = MARKET.length + 1 + RESEARCH.length + BOT_TOOLS.length;
+const TOOL_COUNT = MARKET.length + 1 + RESEARCH.length + ORACLE.length + BOT_TOOLS.length;
 const fixture = fileURLToPath(new URL('./fixture-cli.mjs', import.meta.url));
 const realSpawn = (_command,args,options)=>spawn(process.execPath,[fixture,...args],options);
 
@@ -37,6 +38,18 @@ test('surfaces domain refusals and never retries writes',async()=>{
   const process = new PetriProcess({}, {spawn:(...args)=>{count++;return realSpawn(...args);}});
   await assert.rejects(process.run(['long','ramx','1','--yes']),/fixture transaction refused/);
   assert.equal(count,1);process.dispose();
+});
+
+test('a write that landed before a later step failed comes back whole, with what finishes it',async()=>{
+  const process = new PetriProcess({}, {spawn:realSpawn});
+  try {
+    const result = await process.run(['oracle','updates','commit','RAMX-202610','--source','s','--value','1','--reveal','--yes']);
+    assert.equal(result.data.revealed,false);
+    assert.equal(result.data.error.code,'ORACLE_REVEAL_FAILED');
+    assert.equal(result.data.details.revealCommand,'petri oracle updates reveal C1');
+    // A refusal before anything was sent is still an error.
+    await assert.rejects(process.run(['long','ramx','1','--yes']),/fixture transaction refused/);
+  } finally { process.dispose(); }
 });
 
 test('cancellation stops the owned child and does not imply rollback',async()=>{
@@ -207,7 +220,7 @@ test('client puts research and bots inside the conversation; trading has tools b
   const names=registrations.map(r=>r.options.name);
   assert.ok(!names.includes('main'),'no separate Petri page');
   const toolviews=registrations.filter(r=>r.options.name==='tool.call.toolview').map(r=>r.options.key);
-  for(const tool of [...MARKET.map(t=>t.name),'petri_command',...RESEARCH.map(t=>t.name),...BOT_TOOLS.map(t=>t.name)])assert.ok(toolviews.includes(tool),tool);
+  for(const tool of [...MARKET.map(t=>t.name),'petri_command',...RESEARCH.map(t=>t.name),...ORACLE.map(t=>t.name),...BOT_TOOLS.map(t=>t.name)])assert.ok(toolviews.includes(tool),tool);
   for(const slot of ['conversation.chat.turnTail','conversation.input.dock','conversation.session.header.actions'])assert.ok(names.includes(slot),slot);
   // Two tabs beside the chat: Petri (research and the oracle) and Bots.
   assert.deepEqual(tabTypes.map(t=>t.kind),['petri','petri-bots']);
@@ -248,6 +261,15 @@ test('client puts research and bots inside the conversation; trading has tools b
   assert.equal(module.viewName({name:'petri_command',data:{command:'oracle'}}),'petri_command');
   assert.equal(module.viewName({name:'petri_bots_discover'}),'petri_bot_hub');
   assert.equal(module.viewName({name:'petri_bot_write'}),'petri_bot');
+  // Every oracle write draws what it did, through its tool or petri_command; a simulation draws as it is.
+  for(const tool of ORACLE.filter(t=>t.write&&t.name!=='petri_challenge_source'))assert.equal(module.viewName({name:tool.name,data:{action:'oracle.x'}}),'petri_oracle_done',tool.name);
+  assert.equal(module.viewName({name:'petri_command',data:{action:'oracle.stakes.settle',details:{}}}),'petri_oracle_done');
+  assert.equal(module.viewName({name:'petri_command',data:{action:'oracle.sources.challenge',details:{}}}),'petri_challenge_source');
+  assert.equal(module.viewName({name:'petri_command',data:{action:'oracle.stakes.settle',simulated:true}}),'petri_command');
+  // ...and an oracle read run through it draws as its tool.
+  assert.equal(module.viewName({name:'petri_command',args:{args:['oracle','prints','ramx']},data:{prints:[],open:[],unclaimed:[]}}),'petri_prints');
+  assert.equal(module.viewName({name:'petri_command',args:{args:['oracle','updates']},data:{updates:[],open:[],sources:[]}}),'petri_updates');
+  assert.equal(module.viewName({name:'petri_command',args:{args:['oracle','prints','finalize','RAMX-202701']},data:{ok:true}}),'petri_command');
   assert.deepEqual(Array.from(module.splitCommand('petri evidence show "C:\\My files\\price.json"')),['evidence','show','C:\\My files\\price.json']);
   assert.throws(()=>module.splitCommand('markets "unclosed'),/quoted/);
 });
@@ -270,6 +292,13 @@ test('turn tail keeps the latest card of each bot and research step, and no trad
   assert.equal(data.key,def.kind);
   const entries=Array.from(tailEntries(data.value.results,20),e=>`${e.view}:${e.callId}`);
   assert.deepEqual(entries,['petri_bot:c4','petri_bot_hub:c5','petri_work_next:c7']);
+  // Each oracle write keeps its card, under the latest read of each stage.
+  call('c9','petri_observe',{month:'RAMX-202701',source:'s',file:'/o.json'});result(21,'c9',{ok:true,action:'oracle.observe.opening',details:{}});
+  call('c10','petri_oracle_step',{command:'petri oracle stakes settle RAMX-202610 --kind update-claim --source s --claim c'});result(22,'c10',{ok:true,action:'oracle.stakes.settle',details:{}});
+  call('c11','petri_prints',{});result(23,'c11',{prints:[],open:[],unclaimed:[]});
+  call('c12','petri_prints',{market:'ramx'});result(24,'c12',{prints:[],open:[],unclaimed:[]});
+  const after=Array.from(tailEntries(def.buildLocationData({state},'turn').value.results,30),e=>`${e.view}:${e.callId}`);
+  assert.deepEqual(after,['petri_oracle_done:c9','petri_oracle_done:c10','petri_prints:c12','petri_bot:c4','petri_bot_hub:c5','petri_work_next:c7']);
 });
 
 test('research ids that Petri takes positionally can never become flags',()=>{
@@ -459,4 +488,62 @@ test('an agent is researching only while petri lists its run as active; otherwis
   assert.equal(agentStatus({agents:[agent],activity:[{agentId:'a1'}]},{...agent,revokedAt:now},null).word,'Disconnected');
   assert.equal(agentStatus({agents:[agent]},agent,null).word,'Idle');
   assert.match(agentStatus({agents:[agent],selected:{agent,sessions:[{heartbeatAt:now-5000}]}},agent,null).word,/^Last seen \ds ago$/);
+});
+
+test('a source challenge is the argv its tool built, with its reason by name, sent once; the read never sends',()=>{
+  const [read, challenge] = ['petri_challenges', 'petri_challenge_source'].map(name => ORACLE.find(tool => tool.name === name));
+  assert.deepEqual(read.args(validateMarketInput(read, { market: 'RAMX-202701' })), ['oracle', 'challenges', 'RAMX-202701']);
+  assert.ok(!read.args({}).includes('--yes'));
+  const input = validateMarketInput(challenge, { month: 'RAMX-202701', source: 'ab'.repeat(32), reason: 'duplicate', why: 'Same TrendForce feed as the other source; both pages show the same table.', comparison: 'cd'.repeat(32) });
+  assert.deepEqual(challenge.args(input), ['oracle', 'sources', 'challenge', 'RAMX-202701', '--source', 'ab'.repeat(32), '--reason', 'duplicate',
+    '--why', 'Same TrendForce feed as the other source; both pages show the same table.', '--comparison', 'cd'.repeat(32), '--yes']);
+  assert.deepEqual(REASONS, challenge.schema.properties.reason.enum);
+  assert.throws(() => validateMarketInput(challenge, { month: 'RAMX-202701', source: 'x', reason: 'because', why: 'w' }), /reason/);
+  assert.throws(() => validateMarketInput(challenge, { month: 'RAMX-202701', source: '--bond', reason: 'stale', why: 'w' }), /source/);
+  assert.throws(() => validateMarketInput(challenge, { month: 'RAMX-202701', source: 'x', reason: 'stale' }), /why/);
+});
+
+test('every oracle stage is the petri command its tool built: reads never send, writes confirm once',()=>{
+  const tool = name => ORACLE.find(t => t.name === name);
+  const argv = (name, input) => tool(name).args(validateMarketInput(tool(name), input));
+  const source = 'ab'.repeat(32), claim = 'C1aim1111111111111111111111111111111111111';
+  for (const t of ORACLE) {
+    const sample = Object.fromEntries(Object.entries(t.schema.properties).filter(([k]) => t.schema.required.includes(k))
+      .map(([k, p]) => [k, p.enum ? p.enum[0] : k === 'command' ? 'petri oracle stakes settle RAMX-202610 --kind update-claim --source s' : 'x']));
+    const args = t.args(validateMarketInput(t, sample));
+    assert.equal(args.filter(a => a === '--yes').length, t.write ? 1 : 0, t.name);
+  }
+  assert.deepEqual(argv('petri_prints', { market: 'ramx' }), ['oracle', 'prints', 'ramx']);
+  assert.deepEqual(argv('petri_updates', {}), ['oracle', 'updates']);
+  assert.deepEqual(argv('petri_collateral', { action: 'withdraw', usdc: 'all' }), ['oracle', 'collateral', 'withdraw', 'all', '--yes']);
+  assert.deepEqual(argv('petri_series_template', { bucket: 'DDR5 16Gb', direct: true }), ['oracle', 'series', 'template', '--bucket', 'DDR5 16Gb', '--direct']);
+  assert.deepEqual(argv('petri_series_template', { bucket: 'DDR5_16GBIT', direct: false }), ['oracle', 'series', 'template', '--bucket', 'DDR5_16GBIT']);
+  assert.throws(() => validateMarketInput(tool('petri_series_template'), { bucket: 'x', direct: 'yes' }), /direct/);
+  // An observation and a Game update are committed and revealed in one call; the amounts are petri's.
+  assert.deepEqual(argv('petri_observe', { month: 'RAMX-202701', source, file: '/tmp/o.json' }),
+    ['oracle', 'observe', 'RAMX-202701', '--source', source, '--file', '/tmp/o.json', '--reveal', '--accept', '--yes']);
+  assert.deepEqual(argv('petri_print', { stage: 'update', month: 'RAMX-202610', source, value: '91.5', archiveUrl: 'https://web.archive.org/web/20261027000000/https://x.test/p' }),
+    ['oracle', 'updates', 'commit', 'RAMX-202610', '--source', source, '--value', '91.5', '--archive-url', 'https://web.archive.org/web/20261027000000/https://x.test/p', '--reveal', '--yes']);
+  assert.deepEqual(argv('petri_print', { stage: 'opening', month: 'RAMX-202701', source, evidence: 'f'.repeat(64) }),
+    ['oracle', 'prints', 'opening', 'RAMX-202701', '--source', source, '--evidence', 'f'.repeat(64), '--accept', '--yes']);
+  assert.deepEqual(argv('petri_challenge_update', { month: 'RAMX-202610', claim, value: '90' , archiveUrl: 'https://web.archive.org/web/20261027000000/https://x.test/p' }),
+    ['oracle', 'updates', 'challenge', 'RAMX-202610', '--claim', claim, '--value', '90', '--archive-url', 'https://web.archive.org/web/20261027000000/https://x.test/p', '--yes']);
+  assert.deepEqual(argv('petri_claim_rewards', { month: 'RAMX-202610', kind: 'update' }), ['oracle', 'rewards', 'claim', 'RAMX-202610', '--kind', 'update', '--yes']);
+  assert.deepEqual(argv('petri_stakes', {}), ['oracle', 'stakes']);
+  assert.deepEqual(argv('petri_settle_all', { market: 'RAMX-202610' }), ['oracle', 'stakes', 'settle', '--all', 'RAMX-202610', '--yes']);
+  assert.deepEqual(argv('petri_settle_all', {}), ['oracle', 'stakes', 'settle', '--all', '--yes']);
+  for (const t of ORACLE.filter(t => !t.write)) assert.ok(!t.args({ market: 'ramx', month: 'm', source: 's', file: 'f', bucket: 'b' }).includes('--yes'), t.name);
+});
+
+test('a follow-up step runs only a command an oracle read lists, exactly, and confirms once',()=>{
+  assert.deepEqual(stepArgs('petri oracle stakes settle RAMX-202610 --kind update-claim --source 9xQ --claim 4bR --yes'),
+    ['oracle', 'stakes', 'settle', 'RAMX-202610', '--kind', 'update-claim', '--source', '9xQ', '--claim', '4bR', '--yes']);
+  assert.deepEqual(stepArgs('oracle updates reveal 4bR'), ['oracle', 'updates', 'reveal', '4bR', '--yes']);
+  assert.deepEqual(stepArgs('petri oracle prints finalize RAMX-202701 --source 9xQ'), ['oracle', 'prints', 'finalize', 'RAMX-202701', '--source', '9xQ', '--yes']);
+  assert.deepEqual(stepArgs('petri oracle sponsorships claim 9xQ'), ['oracle', 'sponsorships', 'claim', '9xQ', '--yes']);
+  assert.deepEqual(stepArgs('petri oracle prints expire RAMX-202701 --source 9xQ'), ['oracle', 'prints', 'expire', 'RAMX-202701', '--source', '9xQ', '--yes']);
+  for (const bad of ['petri wallet export', 'petri oracle sources challenge RAMX-202701 --source s', 'petri oracle collateral withdraw all',
+    'petri oracle stakes settle RAMX-202610 --rpc http://evil.test', 'petri oracle stakes settle RAMX-202610 --kind', 'petri oracle updates reveal 4bR;rm',
+    'petri oracle updates reveal $(id)', 'petri --profile dev oracle stakes settle m'])
+    assert.throws(() => stepArgs(bad), /command|Unexpected/, bad);
 });
